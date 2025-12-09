@@ -153,19 +153,37 @@ class Rocket():
         self.apogee = 0.0 #initial value for apogee
         self.chuteDeploy = False #boolean expression to model whether the chute has been deployed
         self.chuteDeployTime = 0.0
+        self.peak_vel = 0.0
+        self.landing_vel = 0.0
+        self.max_accel = 0.0
+        self.coast_time = 0.0
         print("\n \n Rocket created! \n")
 
     def getThrust(self, t):
         return self.motor.getThrust(t) #uses Motor method to find thrust at time t
     
-    def getDrag(self, alt, vel, t,):
+    def getDrag(self, alt, vel, t):
+        T = atm(alt)[0]
         rho = atm(alt)[2]
+        
+        a = np.sqrt(1.4*297.05*T)
+        mach = abs(vel)/a
+
+        if mach < 0.7:
+            Cd_eff = self.Cd
+        elif mach <= 1.0:
+            Cd_eff = self.Cd*(1+0.6*np.exp(-1*(mach-1)**2/(2*0.07*mach**2)))
+        elif mach <= 1.3:
+            Cd_eff = self.Cd*(1+0.6*np.exp(-1*(mach-1)**2/(2*0.25*mach**2)))
+        else:
+            Cd_eff = self.Cd*1.4
+
         if self.chuteDeploy == False:
             drag = .5*rho*vel*vel*self.Cd*self.area #calculates the drag force on the rocket at a given velocity and altitude
         else:
             chuteCd = 1.5*(1-np.exp(-0.4*(t-self.chuteDeployTime)))
             #print(f"Time: {t}, chuteCD: {chuteCd}")
-            drag = .5*rho*vel*vel*self.Cd*self.area + .5*rho*vel*vel*chuteCd*self.chuteArea #calculates drag, including the drag from the chute, using a default Cd for chutes of 1.5 across all sims
+            drag = .5*rho*vel*vel*Cd_eff*self.area + .5*rho*vel*vel*chuteCd*self.chuteArea #calculates drag, including the drag from the chute, using a default Cd for chutes of 1.5 across all sims
         drag *= -np.sign(vel) #flips the direction of drag, so it is always in the opposite direction of velocity
         return drag
 
@@ -202,7 +220,7 @@ def grav(h):
 
 def export_data(file, rocket, time): #function to export the simulation data to a .txt file
     with open(file, 'w') as f:
-        f.write("#Rocket Parameters \n")
+        f.write("# Rocket Parameters \n")
         f.write(f"Rocket Mass: {rocket.mass} kg\n")
         f.write(f"Coefficient of Drag: {rocket.Cd}\n")
         f.write(f"Rocket Face Area: {rocket.area} m^2\n")
@@ -211,6 +229,14 @@ def export_data(file, rocket, time): #function to export the simulation data to 
         f.write(f"Motor Burn Time: {rocket.motor.propBurnTime} s\n")
         f.write(f"Chute Deployment Height: {rocket.chuteHeight} m\n")
         f.write(f"Time Step (dt): {rocket.timeStep} s\n\n")
+
+        f.write('# Output Metrics \n')
+        f.write(f"Launch Apogee: {rocket.apogee} m\n")
+        f.write(f"Motor Burn Time: {rocket.motor.propBurnTime} s\n")
+        f.write(f"Peak Velocity: {rocket.peak_vel} m/s\n")
+        f.write(f"Landing Velocity: {rocket.landing_vel} m/s\n")
+        f.write(f"Max Acceleration: {rocket.max_accel} m/s^2\n")
+        f.write(f"Coasting Time: {rocket.coast_time} s\n\n")
 
         f.write('# Flight Data (time, altitude, velocity, acceleration)\n')
         for i in range(len(time)):
@@ -298,7 +324,6 @@ def main():
             apogee_index = i
             apogee_time = dt*i
 
-
         if rocket.apogee > rocket.chuteHeight and rocket.x[i] <= rocket.chuteHeight and rocket.chuteDeploy == False:
             rocket.chuteDeploy = True
             rocket.chuteDeployTime = t[i]
@@ -319,6 +344,28 @@ def main():
     peak_vel = max(rocket.v)
     peak_vel_index = rocket.v.index(peak_vel)
     peak_vel_time = dt*peak_vel_index
+    rocket.peak_vel = peak_vel
+
+    rocket.landing_vel = rocket.v[i-1]
+
+    rocket.max_accel = max(rocket.a)
+
+    rocket.coast_time = apogee_time - rocket.motor.propBurnTime # pyright: ignore[reportPossiblyUnboundVariable]
+    
+    if rocket.landing_vel < 5:
+        print("Nice soft landing.\n")
+    elif rocket.landing_vel < 10:
+        print("Watch it there! That was a hard landing, someone could've gotten hurt!\n")
+    else:
+        print("Holy cow! It could've blown!\n")
+
+    print('# Output Metrics \n')
+    print(f"Launch Apogee: {rocket.apogee:.2f} m\n")
+    print(f"Motor Burn Time: {rocket.motor.propBurnTime:.2f} s\n")
+    print(f"Peak Velocity: {rocket.peak_vel:.1f} m/s\n")
+    print(f"Landing Velocity: {rocket.landing_vel:.1f} m/s\n")
+    print(f"Max Acceleration: {rocket.max_accel:.1f} m/s^2\n")
+    print(f"Coasting Time: {rocket.coast_time:.2f} s\n\n")
 
     plt.close(fig) #closes the interactive plots
     plt.ioff() #disables itneractive mode
@@ -345,6 +392,7 @@ def main():
     if fileChoice.lower() == "yes":
         fileName = input("What would you like to name the file? ") + ".txt"
         export_data(fileName, rocket, t)
+    print("\nThank you for using the simulation\n\n")
     
 
 
