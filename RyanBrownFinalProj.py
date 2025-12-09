@@ -31,6 +31,7 @@ class Motor():
             ]
             self.propMass = 0.006
             self.propBurnTime = 0.8
+
         elif self.name == "E30":
             self.thrustCurve = [
                 (0.01, 49),
@@ -126,6 +127,28 @@ class Motor():
             self.propMass = 0.487
             self.propBurnTime = 2.9
 
+        elif self.name == "Z1000":
+            # this is a custom "supersonic-capable" motor 
+            self.thrustCurve = [
+                (0.01, 100.0),
+                (0.37, 250.0),
+                (0.98, 600.0),
+                (1.14, 1200.0),
+                (1.67, 1150.0),
+                (2.17, 1050.0),
+                (2.51, 1000.0),
+                (2.84, 950.0),
+                (3.09, 900.0),
+                (3.41, 800.0),
+                (3.75, 650.0),
+                (4.10, 450.0),
+                (4.31, 300.0),
+                (4.63, 120.0),
+                (4.81, 0.0)
+            ]
+            self.propMass = 0.91   
+            self.propBurnTime = 4.8   
+
         else:
             raise ValueError("Unknown Motor Type")
         
@@ -181,7 +204,7 @@ class Rocket():
         if self.chuteDeploy == False:
             drag = .5*rho*vel*vel*self.Cd*self.area #calculates the drag force on the rocket at a given velocity and altitude
         else:
-            chuteCd = 1.5*(1-np.exp(-0.4*(t-self.chuteDeployTime)))
+            chuteCd = 1.5*(1-np.exp(-0.25*(t-self.chuteDeployTime)))
             #print(f"Time: {t}, chuteCD: {chuteCd}")
             drag = .5*rho*vel*vel*Cd_eff*self.area + .5*rho*vel*vel*chuteCd*self.chuteArea #calculates drag, including the drag from the chute, using a default Cd for chutes of 1.5 across all sims
         drag *= -np.sign(vel) #flips the direction of drag, so it is always in the opposite direction of velocity
@@ -261,7 +284,7 @@ def setup():
         
         elif choice.lower() == "preset":
             print("""
-                  Choice A: Alpha Trainer (m=.25 kg, B6 Motor, Cd = .55, A = .0025 m^2)
+                  Choice A: Alpha Trainer (m= .25 kg, B6 Motor, Cd = .55, A = .0025 m^2)
 
                   Choice B: Sky Piercer (m = 1.1 kg, E30 motor, Cd = .5, Area = .0038 m^2)
 
@@ -269,8 +292,10 @@ def setup():
 
                   Choice D: Chonk Lifter (m = 4 kg, J250 motor, Cd = .6, Area = .0075 m^2)
 
+                  Choice E: Dadrito (m = 3.4 kg, Z1000 motor, Cd = .39, Area = .00625 m^2)
+
                   """)
-            presetChoice = input("Which preset would you like to choose? (A, B, C, or D) ")
+            presetChoice = input("Which preset would you like to choose? (A, B, C, D, or E) ")
 
             if presetChoice.upper() == "A":
                 return Rocket(.225, "B6", .55, .0025, 0, 10, .9, .001)
@@ -278,8 +303,10 @@ def setup():
                 return Rocket(1.1, "E30", .45, .0038, 0, 25, 1.55, .001)
             elif presetChoice.upper() == "C":
                 return Rocket(1.8, "G80", .35, .005, 0, 75, 2.25, .001)
-            else:
+            elif presetChoice.upper() == "D":
                 return Rocket(4, "J250", .55, .0075, 0, 150, 3.15, .001)
+            else:
+                return Rocket(3.4, "Z1000", .35, .00425, 0, 225, 4.3, .001)
             
         else:
             print("Invalid input, try again. \n \n")
@@ -295,6 +322,12 @@ def main():
     force = [rocket.getThrust(t[0]) + rocket.getDrag(0, 0, 0) - (rocket.mass+ rocket.motor.propMass)*grav(rocket.x[0])]
     rocket.a[0] = force[0]/(rocket.mass + rocket.motor.propMass)
     i = 1
+
+    KE = [0.0]
+    PE = [0.0]
+    TE = [0.0]
+    E_loss_drag = [0.0] #cumulative list
+    E_in_thrust = [0.0] #cumulative list
 
     plt.ion()
     fig, ax = plt.subplots()
@@ -318,6 +351,23 @@ def main():
         rocket.a.append(force[i]/mass) #calculates the acceleration of the rocket at this increment, using Newton's second law
         rocket.v.append(rocket.v[i-1] + rocket.a[i]*dt)
         rocket.x.append(rocket.x[i-1] + rocket.v[i-1]*dt + .5*rocket.a[i-1]*dt*dt)
+
+        vel_inst = abs(rocket.v[i])
+        x_inst = rocket.x[i]
+
+        KE.append(0.5*mass*vel_inst**2) #kinetic energy
+        PE.append(mass*grav(x_inst)*x_inst) #potential energy
+
+        F_drag = rocket.getDrag(rocket.x[i-1], rocket.v[i-1], t[i])
+        P_drag = abs(F_drag*vel_inst)
+
+        T_inst = rocket.getThrust(t[i])
+        P_thrust = abs(T_inst*rocket.v[i-1])
+
+        E_loss_drag.append(E_loss_drag[-1] + P_drag*dt)
+        E_in_thrust.append(E_in_thrust[-1] + P_thrust*dt)
+        TE.append(KE[-1] + PE[-1] + E_loss_drag[-1])
+
 
         if rocket.x[i] > rocket.apogee:
             rocket.apogee = rocket.x[i]
@@ -370,7 +420,8 @@ def main():
     plt.close(fig) #closes the interactive plots
     plt.ioff() #disables itneractive mode
 
-    plt.subplot(2,1,1)
+    plt.figure()
+    plt.subplot(2,1,1) #plot shows altitude vs. t, and points out apogee 
     plt.plot(t, rocket.x)
     plt.scatter(apogee_time, rocket.apogee, color='red') # type: ignore
     plt.text(apogee_time, rocket.apogee, f"Apogee: {rocket.apogee:.1f} m @ {apogee_time:.2f} s") # type: ignore
@@ -378,7 +429,7 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Altitude (m)')
 
-    plt.subplot(2,1,2)
+    plt.subplot(2,1,2) #plot shows v vs t, and points out the maximum velocity
     plt.plot(t, rocket.v)
     plt.scatter(peak_vel_time, peak_vel, color = 'red')
     plt.text(peak_vel_time, peak_vel, f"Peak v: {peak_vel:.1f} m/s @ {peak_vel_time:.2f} s")
@@ -386,7 +437,31 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Velocity (m/s)')
     plt.tight_layout()
+    plt.show(block=False)
+
+    plt.figure() #plot to show the entire energy breakdown, into KE, PE, energy added from thrust, and energy lost to drag
+    plt.subplot(2,1,1)
+    plt.plot(t, KE, label="Kinetic Energy")
+    plt.plot(t, PE, label="Potential Energy")
+    plt.plot(t, E_in_thrust, label="Thrust Energy Input (Cumulative)")
+    plt.plot(t, E_loss_drag, label="Energy Lost to Drag (Cumulative)")
+    plt.title("Energy Breakdown Through Flight")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Energy (J)")
+    plt.legend()
+
+    plt.subplot(2,1,2) #plot to show conservation of energy
+    plt.plot(t, KE, label="Kinetic Energy")
+    plt.plot(t, PE, label="Potential Energy")
+    plt.plot(t, E_loss_drag, label="Energy Lost to Drag (Cumulative)")
+    plt.plot(t, TE, label="Total Energy")
+    plt.title("Total Energy Through Flight")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Energy (J)")
+    plt.legend()
+    plt.tight_layout()
     plt.show()
+
 
     fileChoice = input("Would you like to create a .txt file containing all the simulation data? (Yes or No) ")
     if fileChoice.lower() == "yes":
