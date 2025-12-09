@@ -152,17 +152,20 @@ class Rocket():
         self.landed = False
         self.apogee = 0.0 #initial value for apogee
         self.chuteDeploy = False #boolean expression to model whether the chute has been deployed
+        self.chuteDeployTime = 0.0
         print("\n \n Rocket created! \n")
 
     def getThrust(self, t):
         return self.motor.getThrust(t) #uses Motor method to find thrust at time t
     
-    def getDrag(self, alt, vel):
+    def getDrag(self, alt, vel, t,):
         rho = atm(alt)[2]
         if self.chuteDeploy == False:
             drag = .5*rho*vel*vel*self.Cd*self.area #calculates the drag force on the rocket at a given velocity and altitude
         else:
-            drag = .5*rho*vel*vel*self.Cd*self.area + .5*rho*vel*vel*1.5*self.chuteArea #calculates drag, including the drag from the chute, using a default Cd for chutes of 1.5 across all sims
+            chuteCd = 1.5*(1-np.exp(-0.4*(t-self.chuteDeployTime)))
+            #print(f"Time: {t}, chuteCD: {chuteCd}")
+            drag = .5*rho*vel*vel*self.Cd*self.area + .5*rho*vel*vel*chuteCd*self.chuteArea #calculates drag, including the drag from the chute, using a default Cd for chutes of 1.5 across all sims
         drag *= -np.sign(vel) #flips the direction of drag, so it is always in the opposite direction of velocity
         return drag
 
@@ -174,7 +177,7 @@ def atm(alt):
     """
     # T --> Kelvin, rho --> kg/m^3, p --> Pa
 
-    h = max(alt, 0)
+    h = max(alt, 0) #troubleshoots problem at beginning of sim where h sometimes becomes negative
 
     if h < 11000:  # Troposphere
         T = 288.15 - 0.0065 * h
@@ -263,7 +266,7 @@ def main():
     dt = rocket.timeStep
 
     t = [0.0]
-    force = [rocket.getThrust(t[0]) + rocket.getDrag(0, 0) - (rocket.mass+ rocket.motor.propMass)*grav(rocket.x[0])]
+    force = [rocket.getThrust(t[0]) + rocket.getDrag(0, 0, 0) - (rocket.mass+ rocket.motor.propMass)*grav(rocket.x[0])]
     rocket.a[0] = force[0]/(rocket.mass + rocket.motor.propMass)
     i = 1
 
@@ -284,7 +287,7 @@ def main():
         else:
             mass = rocket.mass
 
-        force.append(rocket.getThrust(t[i]) + rocket.getDrag(rocket.x[i-1], rocket.v[i-1]) - mass*grav(rocket.x[i-1])) #calulates the force on the rocket at time t
+        force.append(rocket.getThrust(t[i]) + rocket.getDrag(rocket.x[i-1], rocket.v[i-1], t[i]) - mass*grav(rocket.x[i-1])) #calulates the force on the rocket at time t
 
         rocket.a.append(force[i]/mass) #calculates the acceleration of the rocket at this increment, using Newton's second law
         rocket.v.append(rocket.v[i-1] + rocket.a[i]*dt)
@@ -296,8 +299,9 @@ def main():
             apogee_time = dt*i
 
 
-        if rocket.apogee > rocket.chuteHeight and rocket.x[i] <= rocket.chuteHeight:
+        if rocket.apogee > rocket.chuteHeight and rocket.x[i] <= rocket.chuteHeight and rocket.chuteDeploy == False:
             rocket.chuteDeploy = True
+            rocket.chuteDeployTime = t[i]
 
         if rocket.x[i] <= 0 and i > 500: #i > 500 to ensure the simulation runs for at least 1/2 second, negating any interpolation errors
             rocket.x[i] = 0
@@ -308,6 +312,7 @@ def main():
             ax.relim()
             ax.autoscale_view()
             plt.pause(dt)
+            #print("ALT:", rocket.x[i])
 
         i += 1
         
@@ -345,15 +350,3 @@ def main():
 
 main()
 
-
-""""
-    plt.figure()
-    plt.plot(t, rocket.x)
-    plt.title('Altitude vs t')
-    plt.show(block = False)
-
-    plt.figure()
-    plt.plot(t, rocket.v)
-    plt.title("Velocity v. t")
-    plt.show()
-"""
