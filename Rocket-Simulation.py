@@ -268,6 +268,8 @@ def export_data(file, rocket, time): #function to export the simulation data to 
     print(f"\nSaved simulation details to {file}\n")
 
 def setup():
+    print("\n\nWelcome to the Rocket Simulator!\n\n")
+    
     while True:
         choice = input("Would you like to choose a preset rocket, or use custom parameters? (preset or custom) ")
 
