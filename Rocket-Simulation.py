@@ -1,6 +1,7 @@
-import math, matplotlib.pyplot as plt, scipy, numpy as np
+import math, matplotlib.pyplot as plt, numpy as np
 
-class Motor():
+class Motor(): 
+    "Motor class, defines various motors, including their thrust curves and attributes"
     def __init__(self, motorChoice):
         self.name = motorChoice.upper()
 
@@ -14,7 +15,7 @@ class Motor():
                 (0.172, 11.901),
                 (0.181, 12.149),
                 (0.191, 11.901),
-                (0.211, 9.174),
+                (0.211, 9.174),     #thrust curve from experimentation, correlating thrust output to a time during burnout
                 (0.239, 7.314),
                 (0.264, 6.074),
                 (0.275, 5.95),
@@ -29,8 +30,8 @@ class Motor():
                 (0.833, 1.24),
                 (0.857, 0)
             ]
-            self.propMass = 0.006
-            self.propBurnTime = 0.8
+            self.propMass = 0.006 #the mass of the motor (kg), specifically the the propellant
+            self.propBurnTime = 0.8 #the length of motor burnout (s)
 
         elif self.name == "E30":
             self.thrustCurve = [
@@ -150,16 +151,17 @@ class Motor():
             self.propBurnTime = 4.8   
 
         else:
-            raise ValueError("Unknown Motor Type")
+            raise ValueError("Unknown Motor Type") #if user inputs an invalid motor choice
         
         self.timePoints = np.array([p[0] for p in self.thrustCurve]) #creates an array for the thrust curve, one for thrust, and another for its associated time during burnout
         self.thrustPoints = np.array([p[1] for p in self.thrustCurve])
     
     def getThrust(self, t):
-        #returns thrust in Newtons, given time t
+        "Returns thrust in Newtons, given time t"
         return float(np.interp(t, self.timePoints, self.thrustPoints, left=0.0, right = 0.0)) #uses NumPy interpolation for any time t, to find an accurate thrust estimate
 
 class Rocket():
+    "Rocket class, defines the rocket as an object, storing many of its relevant characteristics/parameters as attributes. Contains a few methods used in simulation."
     def __init__(self, bodyMass, motorChoice, Cd, area, wind, chuteHeight, chuteArea, dt):
         self.mass = bodyMass #mass of rocket structure, without fuel
         self.motor = Motor(motorChoice) #motor choice + creates motor object
@@ -169,30 +171,35 @@ class Rocket():
         self.chuteHeight = chuteHeight #height which chute is deployed to decelerate rocket
         self.chuteArea = chuteArea #size of chute to determine deceleration
         self.timeStep = dt #time step for simulation, smaller = more precise but slower simulation
-        self.x = [0.0] #position of rocket
-        self.v = [0.0] #velocity of rocket
-        self.a = [0.0] #acceleration of rocket
-        self.landed = False
-        self.apogee = 0.0 #initial value for apogee
+        self.x = [0.0] #position of rocket (m)
+        self.v = [0.0] #velocity of rocket (m/s)
+        self.a = [0.0] #acceleration of rocket (m/s^2)
+        self.landed = False #boolean expression used to represent if the rocket is still in flight
+        self.apogee = 0.0 #initial value for apogee, the highest altitude the rocket reaches (m)
         self.chuteDeploy = False #boolean expression to model whether the chute has been deployed
-        self.chuteDeployTime = 0.0
-        self.peak_vel = 0.0
-        self.landing_vel = 0.0
-        self.max_accel = 0.0
-        self.coast_time = 0.0
+        self.chuteDeployTime = 0.0 #time during the simulation at which the chute deploys (s)
+        self.peak_vel = 0.0 #initiali value for peak velocity, the maximum velocity of rocket during simulation (m/s)
+        self.landing_vel = 0.0 #final velocity, the velocity which the rocket hits the ground with (m/s)
+        self.max_accel = 0.0 #maximum acceleration the rocket experiences (m/s^2)
+        self.coast_time = 0.0 #time between motor burnout and when the rocket reaches apogee
         print("\n \n Rocket created! \n")
 
     def getThrust(self, t):
-        return self.motor.getThrust(t) #uses Motor method to find thrust at time t
+        "Method which returns the thrust from the motor at given time t."
+        return self.motor.getThrust(t) 
     
     def getDrag(self, alt, vel, t):
-        T = atm(alt)[0]
-        rho = atm(alt)[2]
+        """
+        Function which calculates total drag given the current altitude, velocity, and time. Includes drag from air, as well as from parachute.
+        Also includes drag divergence modeling, for higher mach regimes.
+        """
+        T = atm(alt)[0] #temperature at altitude
+        rho = atm(alt)[2] #air density at altitude
         
-        a = np.sqrt(1.4*297.05*T)
-        mach = abs(vel)/a
+        a = np.sqrt(1.4*297.05*T) #speed of sound at that temperature/altitude
+        mach = abs(vel)/a #current rocket's mach number
 
-        if mach < 0.7:
+        if mach < 0.7: #simple function to model drag changes in transsonic and supersonic regions
             Cd_eff = self.Cd
         elif mach <= 1.0:
             Cd_eff = self.Cd*(1+0.6*np.exp(-1*(mach-1)**2/(2*0.07*mach**2)))
@@ -216,7 +223,7 @@ def atm(alt):
     Function to calculate atmosphere conditions, including temperature, pressure, 
     and density based on ISA Equations
     """
-    # T --> Kelvin, rho --> kg/m^3, p --> Pa
+    # T --> K, rho --> kg/m^3, p --> Pa
 
     h = max(alt, 0) #troubleshoots problem at beginning of sim where h sometimes becomes negative
 
@@ -247,7 +254,7 @@ def export_data(file, rocket, time): #function to export the simulation data to 
         f.write(f"Rocket Mass: {rocket.mass} kg\n")
         f.write(f"Coefficient of Drag: {rocket.Cd}\n")
         f.write(f"Rocket Face Area: {rocket.area} m^2\n")
-        f.write(f"Motor Choice: {rocket.motor.name}\n")
+        f.write(f"Motor Choice: {rocket.motor.name}\n")     #recording the rocket and simulation's initial parameters chosen by the user
         f.write(f"Propellant Mass: {rocket.motor.propMass} kg\n")
         f.write(f"Motor Burn Time: {rocket.motor.propBurnTime} s\n")
         f.write(f"Chute Deployment Height: {rocket.chuteHeight} m\n")
@@ -257,33 +264,35 @@ def export_data(file, rocket, time): #function to export the simulation data to 
         f.write(f"Launch Apogee: {rocket.apogee} m\n")
         f.write(f"Motor Burn Time: {rocket.motor.propBurnTime} s\n")
         f.write(f"Peak Velocity: {rocket.peak_vel} m/s\n")
-        f.write(f"Landing Velocity: {rocket.landing_vel} m/s\n")
+        f.write(f"Landing Velocity: {rocket.landing_vel} m/s\n")        #recoring the output parameters which are given after the simulation is complete
         f.write(f"Max Acceleration: {rocket.max_accel} m/s^2\n")
         f.write(f"Coasting Time: {rocket.coast_time} s\n\n")
 
         f.write('# Flight Data (time, altitude, velocity, acceleration)\n')
-        for i in range(len(time)):
+        for i in range(len(time)):              #recording altitude, velocity, and acceleration at each time point during the simulation
             f.write(f"{time[i]}, {rocket.x[i]}, {rocket.v[i]}, {rocket.a[i]}\n")
 
-    print(f"\nSaved simulation details to {file}\n")
+    print(f"\nSaved simulation details to {file}\n")    #message to show the user that the file has been saved
 
 def setup():
-
+    """
+    Function which initializes the simulation. Asks user to input parameters for the simulation, and then creates a rocket object using those parameters.
+    """
     print("\n\nWelcome to the Rocket Simulator!\n\n")
 
     while True:
         choice = input("Would you like to choose a preset rocket, or use custom parameters? (preset or custom) ")
 
         if choice.lower() == "custom":
-            bodyMass = float(input("What is the mass of the rocket, excluding the mass of the fuel? (kg) "))
-            motorChoice = input("What is your choice of motor? (B6, E30, G80, J250) ")
-            coefDrag = float(input("What is the coefficient of drag for your rocket? "))
-            area = float(input("What is the cross-sectional area of your rocket? (m^2) "))
-            wind = float(input("What is the velocity of the wind? (Positive is to right) (m/s) "))
-            chuteHeight = float(input("At what altitude will the chute deploy? (m) "))
-            chuteArea = float(input("What is the cross-sectional area of your chute? (m^2) "))
-            timeStep = float(input("What is the time-step for this simulation? (Smaller = more precision) "))
-            return Rocket(bodyMass, motorChoice, coefDrag, area, wind, chuteHeight, chuteArea, timeStep)
+            bodyMass = float(input("\nWhat is the mass of the rocket, excluding the mass of the fuel? (kg) "))
+            motorChoice = input("\nWhat is your choice of motor? (B6, E30, G80, J250, Z100) ")
+            coefDrag = float(input("\nWhat is the coefficient of drag for your rocket? "))
+            area = float(input("\nWhat is the cross-sectional area of your rocket? (m^2) "))
+            #wind = float(input("\nWhat is the velocity of the wind? (Positive is to right) (m/s) ")) #ignore wind
+            chuteHeight = float(input("\nAt what altitude will the chute deploy? (m) "))
+            chuteArea = float(input("\nWhat is the cross-sectional area of your chute? (m^2) "))
+            timeStep = float(input("\nWhat is the time-step for this simulation? (Smaller = more precision) "))
+            return Rocket(bodyMass, motorChoice, coefDrag, area, 0, chuteHeight, chuteArea, timeStep)
         
         elif choice.lower() == "preset":
             print("""
@@ -317,25 +326,31 @@ def setup():
 
 
 def main():
-    rocket = setup()
+    """
+    Main 'loop' of the simulation. This function contains all the physics modeling, graphing,and calls to other functions like getDrag() and export_data().
+    """
 
-    dt = rocket.timeStep
+    rocket = setup() #initializes the rocket, running the setup function
 
-    t = [0.0]
-    force = [rocket.getThrust(t[0]) + rocket.getDrag(0, 0, 0) - (rocket.mass+ rocket.motor.propMass)*grav(rocket.x[0])]
-    rocket.a[0] = force[0]/(rocket.mass + rocket.motor.propMass)
-    i = 1
+    dt = rocket.timeStep #dt is the time-step given by the user
+
+    t = [0.0] #creates a time array, used to track time
+    force = [rocket.getThrust(t[0]) + rocket.getDrag(0, 0, 0) - (rocket.mass+ rocket.motor.propMass)*grav(rocket.x[0])] #calculates the initial force on t he rocket, at t=0
+    rocket.a[0] = force[0]/(rocket.mass + rocket.motor.propMass) #Using Newton's second law, calculates the acceleration at t=0
+    i = 1 #variable to track which increment in the physics loop 
+
+    #rocket.v[0] and rocket.x[0] are already set to 0 in the initialization, so do not need to be changed
 
     KE = [0.0]
-    PE = [0.0]
+    PE = [0.0]      #lists to track the kinetic energy, potential energy, total energy, energy loss, and energy in throughout the simulation
     TE = [0.0]
     E_loss_drag = [0.0] #cumulative list
     E_in_thrust = [0.0] #cumulative list
 
-    plt.ion()
-    fig, ax = plt.subplots()
+    plt.ion() #interactive mode on
+    fig, ax = plt.subplots()    #creates a figure which can be interacted with
     line, = ax.plot([], [])
-    ax.set_xlabel("Time (s)")
+    ax.set_xlabel("Time (s)")   
     ax.set_ylabel("Altitude (m)")
     ax.set_title("Live Altitude")
     plt.show()
@@ -345,75 +360,75 @@ def main():
         t.append(dt*i) #creates time list, with each element being the last element + timestep
 
         if t[i] < rocket.motor.propBurnTime:
-            mass = rocket.mass + rocket.motor.propMass*(1-t[i]/rocket.motor.propBurnTime)
+            mass = rocket.mass + rocket.motor.propMass*(1-t[i]/rocket.motor.propBurnTime)   #if the motor is still burning, the mass is the rocket mass + remaining propellant mass
         else:
-            mass = rocket.mass
+            mass = rocket.mass #if motor is no longer burning, remaing mass is just the rocket's mass
 
         force.append(rocket.getThrust(t[i]) + rocket.getDrag(rocket.x[i-1], rocket.v[i-1], t[i]) - mass*grav(rocket.x[i-1])) #calulates the force on the rocket at time t
 
         rocket.a.append(force[i]/mass) #calculates the acceleration of the rocket at this increment, using Newton's second law
-        rocket.v.append(rocket.v[i-1] + rocket.a[i]*dt)
+        rocket.v.append(rocket.v[i-1] + rocket.a[i-1]*dt)   #uses kinematic equations to solve for velocity and altitude
         rocket.x.append(rocket.x[i-1] + rocket.v[i-1]*dt + .5*rocket.a[i-1]*dt*dt)
 
-        vel_inst = abs(rocket.v[i])
+        vel_inst = abs(rocket.v[i]) #instantaneous velocity and position, used for energy calculations
         x_inst = rocket.x[i]
 
         KE.append(0.5*mass*vel_inst**2) #kinetic energy
         PE.append(mass*grav(x_inst)*x_inst) #potential energy
 
-        F_drag = rocket.getDrag(rocket.x[i-1], rocket.v[i-1], t[i])
-        P_drag = abs(F_drag*vel_inst)
+        F_drag = rocket.getDrag(rocket.x[i], rocket.v[i], t[i]) #calculates force of drag   
+        P_drag = abs(F_drag*vel_inst)   #power/energy loss due to drag
 
-        T_inst = rocket.getThrust(t[i])
-        P_thrust = abs(T_inst*rocket.v[i-1])
+        T_inst = rocket.getThrust(t[i]) #calculates thrust at t
+        P_thrust = abs(T_inst*rocket.v[i])  #calculates energy in due to thrust
 
-        E_loss_drag.append(E_loss_drag[-1] + P_drag*dt)
-        E_in_thrust.append(E_in_thrust[-1] + P_thrust*dt)
-        TE.append(KE[-1] + PE[-1] + E_loss_drag[-1])
+        E_loss_drag.append(E_loss_drag[-1] + P_drag*dt) #list tracking all energy loss
+        E_in_thrust.append(E_in_thrust[-1] + P_thrust*dt) #list tracking all energy added to system
+        TE.append(KE[-1] + PE[-1] + E_loss_drag[-1]) #list tracking entire system's energy through time
 
 
-        if rocket.x[i] > rocket.apogee:
-            rocket.apogee = rocket.x[i]
+        if rocket.x[i] > rocket.apogee: #if the rocket's height is higher than the previously set apogee
+            rocket.apogee = rocket.x[i] #this current height is the apogee
             apogee_index = i
-            apogee_time = dt*i
+            apogee_time = dt*i  #records the time apogee is reached
 
-        if rocket.apogee > rocket.chuteHeight and rocket.x[i] <= rocket.chuteHeight and rocket.chuteDeploy == False:
+        if rocket.apogee > rocket.chuteHeight and rocket.x[i] <= rocket.chuteHeight and rocket.chuteDeploy == False: #condition to deploy the parachute
             rocket.chuteDeploy = True
             rocket.chuteDeployTime = t[i]
 
         if rocket.x[i] <= 0 and i > 500: #i > 500 to ensure the simulation runs for at least 1/2 second, negating any interpolation errors
             rocket.x[i] = 0
             rocket.landed = True
-        if i % 100 == 0: #update the plot every 100 iterations
+        if i % 100 == 0: #update the plot every 100 iterations, value chosen to show accuracy without slowing the simulation too much
             line.set_xdata(t)
             line.set_ydata(rocket.x)
-            ax.relim()
-            ax.autoscale_view()
-            plt.pause(dt)
+            ax.relim() #recomputes the data limits for the axes
+            ax.autoscale_view() #sets the scale of the plot, to best show the details
+            plt.pause(dt) #pauses between plotting, without this line the entire program crashes
             #print("ALT:", rocket.x[i])
 
-        i += 1
+        i += 1 #once entire loop has been completed, update the loop variable +1 to move to next time-step
         
     peak_vel = max(rocket.v)
-    peak_vel_index = rocket.v.index(peak_vel)
+    peak_vel_index = rocket.v.index(peak_vel)   #records the rocket's maximum velocity during flight, and where it occurs
     peak_vel_time = dt*peak_vel_index
     rocket.peak_vel = peak_vel
 
-    rocket.landing_vel = rocket.v[i-1]
+    rocket.landing_vel = rocket.v[i-1]  #records the rocket's final velocity, what it reached the ground at
 
-    rocket.max_accel = max(rocket.a)
+    rocket.max_accel = max(rocket.a) #records the rocket's maximum acceleration during the flight
 
-    rocket.coast_time = apogee_time - rocket.motor.propBurnTime # pyright: ignore[reportPossiblyUnboundVariable]
+    rocket.coast_time = apogee_time - rocket.motor.propBurnTime # pyright: ignore[reportPossiblyUnboundVariable] #calculates the rocket's coasting time, the time between burnout and apogee
     
-    if rocket.landing_vel < 5:
+    if abs(rocket.landing_vel) < 5:
         print("Nice soft landing.\n")
-    elif rocket.landing_vel < 10:
+    elif abs(rocket.landing_vel) < 10:      #gives the user a message, to show them the simulation is over and their rocket has landed, and give them some small feedback on how quickly it hit the ground
         print("Watch it there! That was a hard landing, someone could've gotten hurt!\n")
     else:
         print("Holy cow! It could've blown!\n")
 
     print('# Output Metrics \n')
-    print(f"Launch Apogee: {rocket.apogee:.2f} m\n")
+    print(f"Launch Apogee: {rocket.apogee:.2f} m\n")        #prints some immediate output metrics which the user may want to see once the simulation is complete
     print(f"Motor Burn Time: {rocket.motor.propBurnTime:.2f} s\n")
     print(f"Peak Velocity: {rocket.peak_vel:.1f} m/s\n")
     print(f"Landing Velocity: {rocket.landing_vel:.1f} m/s\n")
@@ -466,13 +481,13 @@ def main():
     plt.show()
 
 
-    fileChoice = input("Would you like to create a .txt file containing all the simulation data? (Yes or No) ")
+    fileChoice = input("Would you like to create a .txt file containing all the simulation data? (Yes or No) ") #asks the user if they would like to save the data file
     if fileChoice.lower() == "yes":
         fileName = input("\nWhat would you like to name the file? ") + ".txt"
-        export_data(fileName, rocket, t)
+        export_data(fileName, rocket, t)    #saves data file using the user's input file name
     print("\nThank you for using the simulation. Closing...\n\n")
     
 
 
-main()
+main() #runs it all :)
 
